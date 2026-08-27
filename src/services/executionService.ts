@@ -14,6 +14,27 @@ import { SSEClient } from './sseClient.js';
 import { formatOutput, formatOutputForMobile, buildContextHeader } from '../utils/messageFormatter.js';
 import { processNextInQueue } from './queueManager.js';
 
+async function syncSessionTitle(
+  channel: TextBasedChannel,
+  port: number,
+  sessionId: string,
+): Promise<void> {
+  try {
+    const info = await sessionManager.getSessionInfo(port, sessionId);
+    if (!info || !info.title) return;
+    if (!('setName' in channel)) return;
+    const current = (channel as any).name;
+    if (!current) return;
+    const prefix = current.startsWith('🔒') ? '🔒' : current.startsWith('🤖') ? '🤖' : null;
+    if (!prefix) return;
+    if (current === `${prefix} ${info.title}`) return;
+    const renamed = `${prefix} ${info.title}`.slice(0, 100);
+    await (channel as any).setName(renamed);
+  } catch {
+    // ignore rename failures
+  }
+}
+
 export async function runPrompt(
   channel: TextBasedChannel, 
   threadId: string, 
@@ -79,6 +100,7 @@ export async function runPrompt(
   
   const effectivePath = worktreeMapping?.worktreePath ?? projectPath;
   const preferredModel = dataStore.getChannelModel(parentChannelId);
+  const agent = dataStore.getChannelAgent(threadId);
   const modelDisplay = preferredModel ? `${preferredModel}` : 'default';
   
   const branchName = worktreeMapping?.branchName ?? await worktreeManager.getCurrentBranch(effectivePath) ?? 'main';
@@ -208,6 +230,8 @@ export async function runPrompt(
             await safeSend('✅ Done');
           }
           
+          await syncSessionTitle(channel, port, sessionId);
+          
           sseClient.disconnect();
           sessionManager.clearSseClient(threadId);
           
@@ -317,7 +341,7 @@ export async function runPrompt(
     }, 1000);
     
     await updateStreamMessage(`${contextHeader}\n📌 **Prompt**: ${prompt}\n\n📝 Sending prompt...`, [buttons]);
-    await sessionManager.sendPrompt(port, sessionId, prompt, preferredModel);
+    await sessionManager.sendPrompt(port, sessionId, prompt, preferredModel, agent);
     promptSent = true;
     
   } catch (error) {

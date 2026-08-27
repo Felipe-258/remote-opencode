@@ -13,6 +13,31 @@ export interface ChannelBinding {
   model?: string;
 }
 
+export type AgentMode = 'build' | 'plan';
+
+export interface HubConfig {
+  hubChannelId: string;
+  categoryId: string;
+  projectAlias: string;
+  model: string;
+  agent: AgentMode;
+}
+
+export interface ArchivedSession {
+  channelId: string;
+  sessionId?: string;
+  projectPath?: string;
+  port?: number;
+  model?: string;
+  title?: string;
+  archivedAt: number;
+}
+
+export interface ChannelAgent {
+  channelId: string;
+  agent: AgentMode;
+}
+
 export interface DataStore {
   projects: ProjectConfig[];
   bindings: ChannelBinding[];
@@ -21,6 +46,9 @@ export interface DataStore {
   passthroughThreads?: PassthroughThread[];
   queues?: Record<string, QueuedMessage[]>;
   queueSettings?: Record<string, QueueSettings>;
+  hub?: HubConfig;
+  archivedSessions?: ArchivedSession[];
+  channelAgents?: ChannelAgent[];
 }
 
 export interface QueuedMessage {

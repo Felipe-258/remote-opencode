@@ -9,12 +9,13 @@ function jsonHeaders(): Record<string, string> {
   return { "Content-Type": "application/json", ...getAuthHeaders() };
 }
 
-export async function createSession(port: number): Promise<string> {
+export async function createSession(port: number, title?: string): Promise<string> {
   const url = `http://127.0.0.1:${port}/session`;
+  const body = title ? { title } : {};
   const response = await fetch(url, {
     method: "POST",
     headers: jsonHeaders(),
-    body: "{}",
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -52,11 +53,13 @@ export async function sendPrompt(
   sessionId: string,
   text: string,
   model?: string,
+  agent?: string,
 ): Promise<void> {
   const url = `http://127.0.0.1:${port}/session/${sessionId}/prompt_async`;
   const body: {
     parts: { type: string; text: string }[];
     model?: { providerID: string; modelID: string };
+    agent?: string;
   } = {
     parts: [{ type: "text", text }],
   };
@@ -67,6 +70,10 @@ export async function sendPrompt(
     if (parsedModel) {
       body.model = parsedModel;
     }
+  }
+
+  if (agent) {
+    body.agent = agent;
   }
 
   const response = await fetch(url, {
@@ -82,6 +89,108 @@ export async function sendPrompt(
       `Failed to send prompt: ${response.status} ${response.statusText} — ${responseBody}`,
     );
   }
+}
+
+export async function renameSession(
+  port: number,
+  sessionId: string,
+  title: string,
+): Promise<boolean> {
+  const url = `http://127.0.0.1:${port}/session/${sessionId}`;
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    assertNotAuthError(response.status, "Failed to rename session");
+    return false;
+  }
+  return true;
+}
+
+export async function revertLastMessage(
+  port: number,
+  sessionId: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const listUrl = `http://127.0.0.1:${port}/session/${sessionId}/message?limit=30`;
+  const listResponse = await fetch(listUrl, { headers: jsonHeaders() });
+  if (!listResponse.ok) {
+    assertNotAuthError(listResponse.status, "Failed to list messages");
+    return { ok: false, message: `list failed: ${listResponse.status}` };
+  }
+  const messages = await listResponse.json();
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { ok: false, message: "no messages" };
+  }
+  const lastUser = [...messages].reverse().find((m) => m.info?.role === "user");
+  if (!lastUser?.info?.id) {
+    return { ok: false, message: "no user message found" };
+  }
+  const revertUrl = `http://127.0.0.1:${port}/session/${sessionId}/revert`;
+  const revertResponse = await fetch(revertUrl, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ messageID: lastUser.info.id }),
+  });
+  if (!revertResponse.ok) {
+    assertNotAuthError(revertResponse.status, "Failed to revert message");
+    return { ok: false, message: `revert failed: ${revertResponse.status}` };
+  }
+  return { ok: true };
+}
+
+function parseModelPair(model?: string): { providerID: string; modelID: string } | null {
+  if (!model) return null;
+  return parseModelString(model);
+}
+
+export async function summarizeSession(
+  port: number,
+  sessionId: string,
+  model?: string,
+): Promise<boolean> {
+  const pair = parseModelPair(model);
+  const body: Record<string, string> = {};
+  if (pair) {
+    body.providerID = pair.providerID;
+    body.modelID = pair.modelID;
+  }
+  const url = `http://127.0.0.1:${port}/session/${sessionId}/summarize`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    assertNotAuthError(response.status, "Failed to summarize session");
+    return false;
+  }
+  return true;
+}
+
+export async function initSession(
+  port: number,
+  sessionId: string,
+  model?: string,
+): Promise<boolean> {
+  const pair = parseModelPair(model);
+  const body: Record<string, string> = {};
+  if (pair) {
+    body.providerID = pair.providerID;
+    body.modelID = pair.modelID;
+  }
+  const url = `http://127.0.0.1:${port}/session/${sessionId}/init`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    assertNotAuthError(response.status, "Failed to init session");
+    return false;
+  }
+  return true;
 }
 
 export async function validateSession(
@@ -125,12 +234,19 @@ export async function getSessionInfo(
     return null;
   }
   const data = await response.json();
-  return { id: data.id, title: data.title ?? "" };
+  return {
+    id: data.id,
+    title: data.title ?? "",
+    time: data.time ?? "",
+    timeUpdated: data.timeUpdated ?? "",
+  };
 }
 
 export interface SessionInfo {
   id: string;
   title: string;
+  time?: string;
+  timeUpdated?: string;
 }
 
 export async function listSessions(port: number): Promise<SessionInfo[]> {
@@ -152,9 +268,11 @@ export async function listSessions(port: number): Promise<SessionInfo[]> {
 
   const data = await response.json();
   if (Array.isArray(data)) {
-    return data.map((s: { id: string; title?: string }) => ({
+    return data.map((s: { id: string; title?: string; time?: string; timeUpdated?: string }) => ({
       id: s.id,
       title: s.title ?? "",
+      time: s.time ?? "",
+      timeUpdated: s.timeUpdated ?? "",
     }));
   }
   return [];
@@ -215,6 +333,7 @@ export async function ensureSessionForThread(
   threadId: string,
   projectPath: string,
   port: number,
+  title?: string,
 ): Promise<string> {
   const existingSession = getSessionForThread(threadId);
 
@@ -231,7 +350,7 @@ export async function ensureSessionForThread(
     }
   }
 
-  const sessionId = await createSession(port);
+  const sessionId = await createSession(port, title);
   setSessionForThread(threadId, sessionId, projectPath, port);
   return sessionId;
 }
