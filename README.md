@@ -139,7 +139,7 @@ Run `/hub` in any text channel. The bot pins a launcher panel with buttons:
 | 🧠 **Modelo** | Sets the default model used for new sessions |
 | 📂 **Proyecto** | Sets the default project used for new sessions |
 
-The hub remembers its project alias, model, and category. By default the model is `deepseek/deepseek-v4-flash` (set per project with the **🧠 Modelo** button).
+The hub remembers its project alias, model, and category. By default the model is `deepseek/deepseek-flash` (set per project with the **🧠 Modelo** button).
 
 ### Session channels
 
@@ -610,7 +610,7 @@ All configuration is stored in `~/.remote-opencode/`:
     { "alias": "myapp", "path": "/Users/you/projects/my-app" }
   ],
   "bindings": [
-    { "channelId": "channel-id", "projectAlias": "myapp", "model": "deepseek/deepseek-v4-flash" }
+    { "channelId": "channel-id", "projectAlias": "myapp", "model": "deepseek/deepseek-flash" }
   ],
   "threadSessions": [ ... ],
   "worktreeMappings": [ ... ],
@@ -618,7 +618,7 @@ All configuration is stored in `~/.remote-opencode/`:
     "hubChannelId": "hub-channel-id",
     "categoryId": "sesiones-category-id",
     "projectAlias": "myapp",
-    "model": "deepseek/deepseek-v4-flash",
+    "model": "deepseek/deepseek-flash",
     "agent": "build"
   },
   "channelAgents": [ { "channelId": "channel-id", "agent": "build" } ],

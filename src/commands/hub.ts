@@ -10,7 +10,7 @@ import {
 import * as dataStore from '../services/dataStore.js';
 import type { Command } from './index.js';
 
-const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
+const DEFAULT_MODEL = 'deepseek/deepseek-flash';
 
 export function hubButtonRows(
   projectAlias: string,
