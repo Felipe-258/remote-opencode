@@ -34,3 +34,5 @@ Bot Discord para manejar OpenCode CLI remoto.
 - Probe inutil: body vacio da 400 en ambas familias (validan payload antes de buscar el request). Distinguir store = comparar `GET /question` vs `GET /api/question/request`.
 - Schemas live del server: `curl http://127.0.0.1:<port>/doc` (OpenAPI JSON, 162 paths).
 - Concurrencia: `opencode serve` (bot) y `opencode` local comparten `~/.local/share/opencode/opencode.db`; ids de sesion globales. `opencode --session <id>` / `opencode attach http://127.0.0.1:<port>` reusan la misma sesion.
+- Sync a Discord (`sessionSync.ts`): trae `GET /session/{id}/message`, postea user+assistant nuevos y guarda cursor por canal (`syncCursors` en data.json). El cursor debe apuntar al **ultimo mensaje con texto**, nunca al ultimo a secas: un turno assistant vacio (aun sin persistir, o pregunta resuelta) se saltearia para siempre. Triggers: idle del backgroundWatcher (si no hay run activo), boton `sync_<id>`, `/session sync`, y backfill al resumir sesion.
+- El historial de un run de Discord se marca como sincronizado (`markThreadSynced`) al terminar para no duplicar con el sync del watcher.
