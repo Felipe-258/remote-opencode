@@ -21,6 +21,18 @@ export function selectNewMessages(
   return messages.slice(idx + 1);
 }
 
+// Last message with actual text. Never advance the cursor past a trailing
+// message that is still empty (e.g. an assistant turn not yet persisted),
+// otherwise it would be skipped forever once it gains text.
+export function lastSyncedMessageId(
+  messages: sessionManager.SessionMessage[],
+): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].text.trim()) return messages[i].id;
+  }
+  return undefined;
+}
+
 export async function syncSessionToChannel(
   channel: TextBasedChannel,
   threadId: string,
@@ -47,9 +59,9 @@ export async function syncSessionToChannel(
     }
   }
 
-  const last = messages[messages.length - 1];
+  const last = lastSyncedMessageId(messages);
   if (last) {
-    dataStore.setSyncCursor(threadId, last.id);
+    dataStore.setSyncCursor(threadId, last);
   }
   return { posted, total: messages.length };
 }
@@ -61,9 +73,9 @@ export async function markThreadSynced(
 ): Promise<void> {
   try {
     const messages = await sessionManager.listMessages(port, sessionId);
-    const last = messages[messages.length - 1];
+    const last = lastSyncedMessageId(messages);
     if (last) {
-      dataStore.setSyncCursor(threadId, last.id);
+      dataStore.setSyncCursor(threadId, last);
     }
   } catch {
     // ignore

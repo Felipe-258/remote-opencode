@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { selectNewMessages } from "../services/sessionSync.js";
+import { selectNewMessages, lastSyncedMessageId } from "../services/sessionSync.js";
 import type { SessionMessage } from "../services/sessionManager.js";
 
-function msg(id: string): SessionMessage {
-  return { id, role: "assistant", text: id };
+function msg(id: string, text = id): SessionMessage {
+  return { id, role: "assistant", text };
 }
 
 describe("sessionSync.selectNewMessages", () => {
@@ -27,5 +27,23 @@ describe("sessionSync.selectNewMessages", () => {
 
   it("handles an empty session", () => {
     expect(selectNewMessages([], "m1")).toEqual([]);
+  });
+});
+
+describe("sessionSync.lastSyncedMessageId", () => {
+  it("returns the last message with text", () => {
+    expect(lastSyncedMessageId([msg("m1"), msg("m2")])).toBe("m2");
+  });
+
+  it("skips a trailing empty message so it is not lost", () => {
+    expect(lastSyncedMessageId([msg("m1"), msg("m2"), msg("m3", "")])).toBe("m2");
+  });
+
+  it("returns undefined when every message is empty", () => {
+    expect(lastSyncedMessageId([msg("m1", "  ")])).toBeUndefined();
+  });
+
+  it("returns undefined for an empty session", () => {
+    expect(lastSyncedMessageId([])).toBeUndefined();
   });
 });
