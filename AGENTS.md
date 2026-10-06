@@ -26,3 +26,11 @@ Bot Discord para manejar OpenCode CLI remoto.
 ## Aprendizajes
 - El default del hub es solo fallback: si data.json ya tiene `hub.model` y `bindings[].model`, esos mandan. Cambiar `DEFAULT_MODEL` no corrige canales existentes; hay que actualizar data.json.
 - IDs de modelo deepseek: `deepseek/deepseek-flash` = display "DeepSeek V4.1 Flash"; `deepseek/deepseek-v4-pro`. `deepseek/deepseek-v4-flash` NO existe (nombre viejo, rompia sesiones). Verificar siempre con `opencode models`.
+- opencode expone DOS familias de API: **legacy** (raiz, payload SSE en `properties`): `/event`, `/question`, `/permission`, `/session/...`; y **v2** (`/api/...`, payload en `data`): `/api/event`, `/api/question/request`, etc. El SSE del bot usa legacy. Reglas:
+  - responder pregunta: `POST /question/{id}/reply` `{answers:string[][]}`; rechazar: `POST /question/{id}/reject`.
+  - responder permiso: `POST /permission/{id}/reply` `{reply,message?}`.
+  - listar: `GET /question` y `GET /permission` (devuelven array plano).
+  - las rutas `/api/session/{sid}/question|permission/{id}/reply` NO sirven para los ids que llegan por el SSE legacy (404). Para preguntas, el store v2 viene vacio mientras el legacy tiene la pendiente.
+- Probe inutil: body vacio da 400 en ambas familias (validan payload antes de buscar el request). Distinguir store = comparar `GET /question` vs `GET /api/question/request`.
+- Schemas live del server: `curl http://127.0.0.1:<port>/doc` (OpenAPI JSON, 162 paths).
+- Concurrencia: `opencode serve` (bot) y `opencode` local comparten `~/.local/share/opencode/opencode.db`; ids de sesion globales. `opencode --session <id>` / `opencode attach http://127.0.0.1:<port>` reusan la misma sesion.

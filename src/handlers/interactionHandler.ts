@@ -187,6 +187,7 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction) {
       return;
     }
 
+    await interaction.deferUpdate();
     const ok = await sessionManager.replyToQuestion(
       entry.port,
       entry.sessionID,
@@ -195,7 +196,7 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction) {
     );
     pendingRequests.deletePending(requestID);
     const note = ok ? '✅ Pregunta respondida.' : '⚠️ No se pudo enviar la respuesta.';
-    await interaction.update({
+    await interaction.editReply({
       content: note,
       embeds: [],
       components: [],
@@ -356,6 +357,7 @@ async function handleQuestionModal(interaction: Interaction) {
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const ok = await sessionManager.replyToQuestion(
     entry.port,
     entry.sessionID,
@@ -370,8 +372,7 @@ async function handleQuestionModal(interaction: Interaction) {
       ok ? '✅ Pregunta respondida.' : '⚠️ No se pudo enviar la respuesta.',
     );
   }
-  await interaction.reply({
+  await interaction.editReply({
     content: ok ? '✅ Pregunta respondida.' : '⚠️ No se pudo enviar la respuesta.',
-    flags: MessageFlags.Ephemeral,
   });
 }

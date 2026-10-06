@@ -214,7 +214,8 @@ export async function replyToQuestion(
   requestId: string,
   answers: string[][],
 ): Promise<boolean> {
-  const url = `http://127.0.0.1:${port}/api/session/${sessionId}/question/${requestId}/reply`;
+  void sessionId;
+  const url = `http://127.0.0.1:${port}/question/${requestId}/reply`;
   const response = await fetch(url, {
     method: "POST",
     headers: jsonHeaders(),
@@ -232,7 +233,8 @@ export async function rejectQuestion(
   sessionId: string,
   requestId: string,
 ): Promise<boolean> {
-  const url = `http://127.0.0.1:${port}/api/session/${sessionId}/question/${requestId}/reject`;
+  void sessionId;
+  const url = `http://127.0.0.1:${port}/question/${requestId}/reject`;
   const response = await fetch(url, {
     method: "POST",
     headers: jsonHeaders(),
@@ -251,7 +253,8 @@ export async function replyToPermission(
   reply: 'once' | 'always' | 'reject',
   message?: string,
 ): Promise<boolean> {
-  const url = `http://127.0.0.1:${port}/api/session/${sessionId}/permission/${requestId}/reply`;
+  void sessionId;
+  const url = `http://127.0.0.1:${port}/permission/${requestId}/reply`;
   const body: { reply: string; message?: string } = { reply };
   if (message) {
     body.message = message;
@@ -269,7 +272,7 @@ export async function replyToPermission(
 }
 
 export async function listQuestions(port: number): Promise<QuestionRequest[]> {
-  const url = `http://127.0.0.1:${port}/api/question/request`;
+  const url = `http://127.0.0.1:${port}/question`;
   try {
     const response = await fetch(url, { headers: jsonHeaders() });
     if (!response.ok) return [];
@@ -281,7 +284,7 @@ export async function listQuestions(port: number): Promise<QuestionRequest[]> {
 }
 
 export async function listPermissions(port: number): Promise<PermissionRequest[]> {
-  const url = `http://127.0.0.1:${port}/api/permission/request`;
+  const url = `http://127.0.0.1:${port}/permission`;
   try {
     const response = await fetch(url, { headers: jsonHeaders() });
     if (!response.ok) return [];

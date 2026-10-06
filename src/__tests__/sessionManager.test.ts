@@ -60,6 +60,11 @@ import {
   setSseClient,
   getSseClient,
   clearSseClient,
+  replyToQuestion,
+  rejectQuestion,
+  replyToPermission,
+  listQuestions,
+  listPermissions,
 } from "../services/sessionManager.js";
 import { SSEClient } from "../services/sseClient.js";
 
@@ -559,5 +564,83 @@ describe("SessionManager", () => {
       await expect(listSessions(3000)).resolves.toEqual([]);
       await expect(abortSession(3000, "ses_abc")).resolves.toBe(false);
     });
+  });
+});
+
+describe("SessionManager question/permission endpoints", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockReset();
+    delete process.env.OPENCODE_SERVER_PASSWORD;
+    delete process.env.OPENCODE_SERVER_USERNAME;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("replies to a question via the legacy /question/{id}/reply endpoint", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true });
+
+    const ok = await replyToQuestion(3000, "ses_x", "que_y", [["a"], ["b"]]);
+
+    expect(ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/question/que_y/reply",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ answers: [["a"], ["b"]] }),
+      }),
+    );
+  });
+
+  it("rejects a question via the legacy /question/{id}/reject endpoint", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true });
+
+    await rejectQuestion(3000, "ses_x", "que_y");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/question/que_y/reject",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("replies to a permission via the legacy /permission/{id}/reply endpoint", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true });
+
+    const ok = await replyToPermission(3000, "ses_x", "per_y", "once");
+
+    expect(ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/permission/per_y/reply",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ reply: "once" }),
+      }),
+    );
+  });
+
+  it("lists pending questions from the legacy /question endpoint", async () => {
+    const pending = [{ id: "que_y", sessionID: "ses_x", questions: [] }];
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => pending });
+
+    await expect(listQuestions(3000)).resolves.toEqual(pending);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/question",
+      expect.any(Object),
+    );
+  });
+
+  it("lists pending permissions from the legacy /permission endpoint", async () => {
+    const pending = [{ id: "per_y", sessionID: "ses_x", permission: "bash" }];
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => pending });
+
+    await expect(listPermissions(3000)).resolves.toEqual(pending);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/permission",
+      expect.any(Object),
+    );
   });
 });
