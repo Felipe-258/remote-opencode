@@ -6,6 +6,8 @@ import * as dataStore from '../services/dataStore.js';
 import * as sessionFlow from '../services/sessionFlow.js';
 import * as serveManager from '../services/serveManager.js';
 import * as sessionManager from '../services/sessionManager.js';
+import * as qaPrompts from '../services/qaPrompts.js';
+import * as pendingRequests from '../services/pendingRequests.js';
 
 export async function handleInteraction(interaction: Interaction) {
   if (interaction.isButton()) {
@@ -34,6 +36,8 @@ export async function handleInteraction(interaction: Interaction) {
     }
     if (interaction.customId === 'new-session-modal') {
       await handleNewSessionModal(interaction);
+    } else if (interaction.customId.startsWith('qother-modal_')) {
+      await handleQuestionModal(interaction);
     }
     return;
   }
@@ -159,6 +163,45 @@ async function handleNewSessionModal(interaction: Interaction) {
 
 async function handleSelectMenu(interaction: StringSelectMenuInteraction) {
   const customId = interaction.customId;
+
+  if (customId.startsWith('qsel_')) {
+    const { requestID, suffix } = pendingRequests.splitCustomId(customId, 'qsel_');
+    const qIndex = Number(suffix);
+    const entry = pendingRequests.getPending(requestID);
+    if (!entry || entry.kind !== 'question') {
+      await interaction.reply({
+        content: '⚠️ Pregunta no encontrada o ya respondida.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    entry.answers[qIndex] = [...interaction.values];
+
+    if (!pendingRequests.isQuestionComplete(entry)) {
+      const answered = Object.keys(entry.answers).length;
+      await interaction.reply({
+        content: `✅ Pregunta ${answered}/${entry.questions.length} respondida.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const ok = await sessionManager.replyToQuestion(
+      entry.port,
+      entry.sessionID,
+      requestID,
+      pendingRequests.buildQuestionAnswers(entry),
+    );
+    pendingRequests.deletePending(requestID);
+    const note = ok ? '✅ Pregunta respondida.' : '⚠️ No se pudo enviar la respuesta.';
+    await interaction.update({
+      content: note,
+      embeds: [],
+      components: [],
+    });
+    return;
+  }
 
   if (customId.startsWith('model-select_')) {
     const channelId = customId.replace('model-select_', '');
@@ -286,4 +329,49 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction) {
     }
     return;
   }
+}
+
+async function handleQuestionModal(interaction: Interaction) {
+  if (!interaction.isModalSubmit()) return;
+  const { requestID, suffix } = pendingRequests.splitCustomId(interaction.customId, 'qother-modal_');
+  const qIndex = Number(suffix);
+  const answer = interaction.fields.getTextInputValue('answer').trim();
+
+  const entry = pendingRequests.getPending(requestID);
+  if (!entry || entry.kind !== 'question') {
+    await interaction.reply({
+      content: '⚠️ Pregunta no encontrada o ya respondida.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  entry.answers[qIndex] = [answer];
+
+  if (!pendingRequests.isQuestionComplete(entry)) {
+    await interaction.reply({
+      content: `✅ Pregunta ${Object.keys(entry.answers).length}/${entry.questions.length} respondida.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const ok = await sessionManager.replyToQuestion(
+    entry.port,
+    entry.sessionID,
+    requestID,
+    pendingRequests.buildQuestionAnswers(entry),
+  );
+  pendingRequests.deletePending(requestID);
+  if (interaction.channel) {
+    await qaPrompts.disableMessage(
+      interaction.channel,
+      entry.messageId,
+      ok ? '✅ Pregunta respondida.' : '⚠️ No se pudo enviar la respuesta.',
+    );
+  }
+  await interaction.reply({
+    content: ok ? '✅ Pregunta respondida.' : '⚠️ No se pudo enviar la respuesta.',
+    flags: MessageFlags.Ephemeral,
+  });
 }

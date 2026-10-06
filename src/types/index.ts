@@ -119,3 +119,36 @@ export interface SessionErrorInfo {
     providerID?: string;
   };
 }
+
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface QuestionInfo {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+}
+
+export interface QuestionRequest {
+  id: string;
+  sessionID: string;
+  questions: QuestionInfo[];
+  tool?: { messageID?: string; callID?: string };
+}
+
+export interface PermissionRequest {
+  id: string;
+  sessionID: string;
+  permission?: string;
+  action?: string;
+  patterns?: string[];
+  resources?: string[];
+  metadata?: Record<string, unknown>;
+  always?: string[];
+  save?: string[];
+  tool?: { messageID?: string; callID?: string };
+}

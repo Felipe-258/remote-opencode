@@ -14,6 +14,8 @@ import * as serveManager from '../services/serveManager.js';
 import * as dataStore from '../services/dataStore.js';
 import * as worktreeManager from '../services/worktreeManager.js';
 import * as sessionFlow from '../services/sessionFlow.js';
+import * as qaPrompts from '../services/qaPrompts.js';
+import * as pendingRequests from '../services/pendingRequests.js';
 import { computeDiff } from '../commands/diff.js';
 import { getCachedModels } from '../commands/model.js';
 
@@ -34,6 +36,20 @@ export async function handleButton(interaction: ButtonInteraction) {
   }
   if (customId === 'project-hub') {
     await handleProjectSelect(interaction);
+    return;
+  }
+  if (customId.startsWith('qreject_')) {
+    await handleQuestionReject(interaction, customId.slice('qreject_'.length));
+    return;
+  }
+  if (customId.startsWith('preply_')) {
+    const { requestID, suffix } = pendingRequests.splitCustomId(customId, 'preply_');
+    await handlePermissionReply(interaction, requestID, suffix as 'once' | 'always' | 'reject');
+    return;
+  }
+  if (customId.startsWith('qother_')) {
+    const { requestID, suffix } = pendingRequests.splitCustomId(customId, 'qother_');
+    await handleQuestionOther(interaction, requestID, Number(suffix));
     return;
   }
 
@@ -472,6 +488,97 @@ async function handleInit(interaction: ButtonInteraction, channelId: string) {
   const ok = await sessionManager.initSession(session.port, session.sessionId, model);
   await interaction.editReply({
     content: ok ? '⚡ AGENTS.md generado/actualizado.' : '⚠️ No se pudo inicializar el proyecto.',
+  });
+}
+
+async function handleQuestionReject(interaction: ButtonInteraction, requestID: string) {
+  const entry = pendingRequests.getPending(requestID);
+  if (!entry || entry.kind !== 'question') {
+    await interaction.reply({
+      content: '⚠️ Pregunta no encontrada o ya respondida.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const ok = await sessionManager.rejectQuestion(entry.port, entry.sessionID, requestID);
+  pendingRequests.deletePending(requestID);
+  if (interaction.channel) {
+    await qaPrompts.disableMessage(interaction.channel, entry.messageId, '❌ Pregunta cancelada.');
+  }
+  await interaction.editReply({
+    content: ok ? '❌ Pregunta cancelada.' : '⚠️ No se pudo cancelar la pregunta.',
+  });
+}
+
+async function handlePermissionReply(
+  interaction: ButtonInteraction,
+  requestID: string,
+  reply: 'once' | 'always' | 'reject',
+) {
+  const entry = pendingRequests.getPending(requestID);
+  if (!entry || entry.kind !== 'permission') {
+    await interaction.reply({
+      content: '⚠️ Permiso no encontrado o ya respondido.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const ok = await sessionManager.replyToPermission(entry.port, entry.sessionID, requestID, reply);
+  pendingRequests.deletePending(requestID);
+  if (interaction.channel) {
+    const note =
+      reply === 'reject'
+        ? '❌ Permiso rechazado.'
+        : `✅ Permiso permitido${reply === 'always' ? ' (siempre)' : ''}.`;
+    await qaPrompts.disableMessage(interaction.channel, entry.messageId, note);
+  }
+  await interaction.editReply({
+    content: ok
+      ? reply === 'reject'
+        ? '❌ Permiso rechazado.'
+        : `✅ Permiso permitido${reply === 'always' ? ' (siempre)' : ''}.`
+      : '⚠️ No se pudo responder el permiso.',
+  });
+}
+
+async function handleQuestionOther(interaction: ButtonInteraction, requestID: string, qIndex: number) {
+  const entry = pendingRequests.getPending(requestID);
+  if (!entry || entry.kind !== 'question') {
+    await interaction.reply({
+      content: '⚠️ Pregunta no encontrada o ya respondida.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const question = entry.questions[qIndex];
+  if (!question?.custom) {
+    await interaction.reply({
+      content: '⚠️ Esta pregunta no admite respuesta libre.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.showModal({
+    customId: `qother-modal_${requestID}_${qIndex}`,
+    title: question.header || 'Respondé',
+    components: [
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('answer')
+          .setLabel(question.question.slice(0, 45))
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Escribí tu respuesta...')
+          .setRequired(true)
+          .setMaxLength(1900),
+      ),
+    ],
   });
 }
 

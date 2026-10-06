@@ -379,6 +379,38 @@ describe("SessionManager", () => {
     });
   });
 
+  describe("session time normalization", () => {
+    it("maps the OpenCode { created, updated } time object to sortable strings", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { id: "ses_a", title: "A", time: { created: 1000, updated: 2000 } },
+        ],
+      });
+      const [s] = await listSessions(3000);
+      expect(s.time).toBe("2000");
+      expect(() => s.time!.localeCompare("1")).not.toThrow();
+    });
+
+    it("unwraps a { data: [...] } response and normalizes numeric time", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: "ses_b", title: "B", time: 1234 }] }),
+      });
+      const [s] = await listSessions(3000);
+      expect(s.time).toBe("1234");
+    });
+
+    it("normalizes getSessionInfo time", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: "ses_c", title: "C", time: { created: 5, updated: 9 } }),
+      });
+      const info = await getSessionInfo(3000, "ses_c");
+      expect(info?.time).toBe("9");
+    });
+  });
+
   describe("OPENCODE_SERVER_PASSWORD auth", () => {
     it("does not send Authorization header when env is unset (current behavior)", async () => {
       mockFetch.mockResolvedValueOnce({

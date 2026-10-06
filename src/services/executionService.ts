@@ -11,8 +11,32 @@ import * as sessionManager from './sessionManager.js';
 import * as serveManager from './serveManager.js';
 import * as worktreeManager from './worktreeManager.js';
 import { SSEClient } from './sseClient.js';
+import * as qaPrompts from './qaPrompts.js';
 import { formatOutput, formatOutputForMobile, buildContextHeader } from '../utils/messageFormatter.js';
 import { processNextInQueue } from './queueManager.js';
+
+async function buildRunFooter(
+  port: number,
+  sessionId: string,
+): Promise<string> {
+  try {
+    const info = await sessionManager.getSessionInfo(port, sessionId);
+    if (!info) return '';
+    const parts: string[] = [];
+    if (info.tokens) {
+      parts.push(
+        `📊 Tokens: ${info.tokens.input ?? 0} in / ${info.tokens.output ?? 0} out` +
+          (info.tokens.reasoning ? ` (${info.tokens.reasoning} reasoning)` : ''),
+      );
+    }
+    if (info.cost !== undefined && info.cost > 0) {
+      parts.push(`💰 $${Number(info.cost).toFixed(4)}`);
+    }
+    return parts.length > 0 ? `\n${parts.join(' · ')}` : '';
+  } catch {
+    return '';
+  }
+}
 
 async function syncSessionTitle(
   channel: TextBasedChannel,
@@ -172,6 +196,36 @@ export async function runPrompt(
     const sseClient = new SSEClient();
     sseClient.connect(`http://127.0.0.1:${port}`);
     sessionManager.setSseClient(threadId, sseClient);
+
+    sseClient.onQuestionAsked((request) => {
+      if (request.sessionID !== sessionId) return;
+      void qaPrompts.postQuestion(channel, port, request);
+    });
+
+    sseClient.onPermissionAsked((request) => {
+      if (request.sessionID !== sessionId) return;
+      void qaPrompts.postPermission(channel, port, request);
+    });
+
+    // Catch-up: post any pending questions/permissions that may have been missed
+    void (async () => {
+      try {
+        const questions = await sessionManager.listQuestions(port);
+        for (const q of questions) {
+          if (q.sessionID === sessionId) {
+            await qaPrompts.postQuestion(channel, port, q);
+          }
+        }
+        const permissions = await sessionManager.listPermissions(port);
+        for (const p of permissions) {
+          if (p.sessionID === sessionId) {
+            await qaPrompts.postPermission(channel, port, p);
+          }
+        }
+      } catch {
+        // ignore catch-up errors
+      }
+    })();
     
     sseClient.onPartUpdated((part) => {
       if (part.sessionID !== sessionId) return;
@@ -227,7 +281,7 @@ export async function runPrompt(
               await safeSend(result.chunks[i]);
             }
             
-            await safeSend('✅ Done');
+            await safeSend('✅ Done' + (await buildRunFooter(port, sessionId)));
           }
           
           await syncSessionTitle(channel, port, sessionId);

@@ -2,11 +2,26 @@ import type { SSEClient } from "./sseClient.js";
 import * as dataStore from "./dataStore.js";
 import { sanitizeModel } from "../utils/stringUtils.js";
 import { getAuthHeaders, assertNotAuthError } from "./serverAuth.js";
+import type { QuestionRequest, PermissionRequest } from "../types/index.js";
 
 const threadSseClients = new Map<string, SSEClient>();
 
 function jsonHeaders(): Record<string, string> {
   return { "Content-Type": "application/json", ...getAuthHeaders() };
+}
+
+// OpenCode returns session `time` as `{ created, updated }` (epoch ms), not a
+// string. Normalize to a comparable string so consumers can sort/format it.
+function normalizeTime(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (value && typeof value === "object") {
+    const t = value as { updated?: unknown; created?: unknown };
+    const pick = t.updated ?? t.created;
+    if (typeof pick === "number") return String(pick);
+    if (typeof pick === "string") return pick;
+  }
+  return "";
 }
 
 export async function createSession(port: number, title?: string): Promise<string> {
@@ -193,6 +208,90 @@ export async function initSession(
   return true;
 }
 
+export async function replyToQuestion(
+  port: number,
+  sessionId: string,
+  requestId: string,
+  answers: string[][],
+): Promise<boolean> {
+  const url = `http://127.0.0.1:${port}/api/session/${sessionId}/question/${requestId}/reply`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ answers }),
+  });
+  if (!response.ok) {
+    assertNotAuthError(response.status, "Failed to reply to question");
+    return false;
+  }
+  return true;
+}
+
+export async function rejectQuestion(
+  port: number,
+  sessionId: string,
+  requestId: string,
+): Promise<boolean> {
+  const url = `http://127.0.0.1:${port}/api/session/${sessionId}/question/${requestId}/reject`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: jsonHeaders(),
+  });
+  if (!response.ok) {
+    assertNotAuthError(response.status, "Failed to reject question");
+    return false;
+  }
+  return true;
+}
+
+export async function replyToPermission(
+  port: number,
+  sessionId: string,
+  requestId: string,
+  reply: 'once' | 'always' | 'reject',
+  message?: string,
+): Promise<boolean> {
+  const url = `http://127.0.0.1:${port}/api/session/${sessionId}/permission/${requestId}/reply`;
+  const body: { reply: string; message?: string } = { reply };
+  if (message) {
+    body.message = message;
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    assertNotAuthError(response.status, "Failed to reply to permission");
+    return false;
+  }
+  return true;
+}
+
+export async function listQuestions(port: number): Promise<QuestionRequest[]> {
+  const url = `http://127.0.0.1:${port}/api/question/request`;
+  try {
+    const response = await fetch(url, { headers: jsonHeaders() });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? (data as QuestionRequest[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function listPermissions(port: number): Promise<PermissionRequest[]> {
+  const url = `http://127.0.0.1:${port}/api/permission/request`;
+  try {
+    const response = await fetch(url, { headers: jsonHeaders() });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? (data as PermissionRequest[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function validateSession(
   port: number,
   sessionId: string,
@@ -237,8 +336,16 @@ export async function getSessionInfo(
   return {
     id: data.id,
     title: data.title ?? "",
-    time: data.time ?? "",
-    timeUpdated: data.timeUpdated ?? "",
+    time: normalizeTime(data.time) || normalizeTime(data.timeUpdated),
+    timeUpdated: normalizeTime(data.timeUpdated) || normalizeTime(data.time),
+    cost: typeof data.cost === "number" ? data.cost : undefined,
+    tokens: data.tokens
+      ? {
+          input: data.tokens.input,
+          output: data.tokens.output,
+          reasoning: data.tokens.reasoning,
+        }
+      : undefined,
   };
 }
 
@@ -247,6 +354,8 @@ export interface SessionInfo {
   title: string;
   time?: string;
   timeUpdated?: string;
+  cost?: number;
+  tokens?: { input?: number; output?: number; reasoning?: number };
 }
 
 export async function listSessions(port: number): Promise<SessionInfo[]> {
@@ -268,11 +377,20 @@ export async function listSessions(port: number): Promise<SessionInfo[]> {
 
   const data = await response.json();
   if (Array.isArray(data)) {
-    return data.map((s: { id: string; title?: string; time?: string; timeUpdated?: string }) => ({
+    return data.map((s: { id: string; title?: string; time?: unknown; timeUpdated?: unknown }) => ({
       id: s.id,
       title: s.title ?? "",
-      time: s.time ?? "",
-      timeUpdated: s.timeUpdated ?? "",
+      time: normalizeTime(s.time) || normalizeTime(s.timeUpdated),
+      timeUpdated: normalizeTime(s.timeUpdated) || normalizeTime(s.time),
+    }));
+  }
+  const wrapped = (data as { data?: unknown })?.data;
+  if (Array.isArray(wrapped)) {
+    return wrapped.map((s: { id: string; title?: string; time?: unknown; timeUpdated?: unknown }) => ({
+      id: s.id,
+      title: s.title ?? "",
+      time: normalizeTime(s.time) || normalizeTime(s.timeUpdated),
+      timeUpdated: normalizeTime(s.timeUpdated) || normalizeTime(s.time),
     }));
   }
   return [];
