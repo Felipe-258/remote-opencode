@@ -12,6 +12,7 @@ import * as serveManager from './serveManager.js';
 import * as worktreeManager from './worktreeManager.js';
 import { SSEClient } from './sseClient.js';
 import * as qaPrompts from './qaPrompts.js';
+import * as sessionSync from './sessionSync.js';
 import { formatOutput, formatOutputForMobile, buildContextHeader } from '../utils/messageFormatter.js';
 import { processNextInQueue } from './queueManager.js';
 
@@ -285,6 +286,7 @@ export async function runPrompt(
           }
           
           await syncSessionTitle(channel, port, sessionId);
+          await sessionSync.markThreadSynced(threadId, port, sessionId);
           
           sseClient.disconnect();
           sessionManager.clearSseClient(threadId);

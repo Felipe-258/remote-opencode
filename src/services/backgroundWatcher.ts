@@ -1,8 +1,9 @@
-import { TextBasedChannel, TextChannel } from 'discord.js';
+import { TextBasedChannel } from 'discord.js';
 import { SSEClient } from './sseClient.js';
 import * as dataStore from './dataStore.js';
 import * as sessionManager from './sessionManager.js';
 import * as qaPrompts from './qaPrompts.js';
+import * as sessionSync from './sessionSync.js';
 import { getClient } from './clientRef.js';
 
 interface Watcher {
@@ -63,7 +64,7 @@ export function ensureWatcher(port: number): void {
     if (sessionManager.getSseClient(channelId)?.isConnected()) return;
     const channel = fetchChannel(channelId);
     if (channel) {
-      void (channel as TextChannel).send(`✅ Run terminado en <#${channelId}>.`).catch(() => {});
+      void sessionSync.syncSessionToChannel(channel, channelId).catch(() => {});
     }
   });
 

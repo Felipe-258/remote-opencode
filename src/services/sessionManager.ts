@@ -341,6 +341,9 @@ export async function getSessionInfo(
     title: data.title ?? "",
     time: normalizeTime(data.time) || normalizeTime(data.timeUpdated),
     timeUpdated: normalizeTime(data.timeUpdated) || normalizeTime(data.time),
+    directory: typeof data.directory === "string" ? data.directory : undefined,
+    agent: typeof data.agent === "string" ? data.agent : undefined,
+    model: formatModelRef(data.model),
     cost: typeof data.cost === "number" ? data.cost : undefined,
     tokens: data.tokens
       ? {
@@ -357,8 +360,79 @@ export interface SessionInfo {
   title: string;
   time?: string;
   timeUpdated?: string;
+  directory?: string;
+  agent?: string;
+  model?: string;
   cost?: number;
   tokens?: { input?: number; output?: number; reasoning?: number };
+}
+
+export interface SessionMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+}
+
+function formatModelRef(model: unknown): string | undefined {
+  if (!model || typeof model !== "object") return undefined;
+  const m = model as { id?: unknown; providerID?: unknown };
+  if (typeof m.providerID === "string" && typeof m.id === "string") {
+    return `${m.providerID}/${m.id}`;
+  }
+  if (typeof m.id === "string") return m.id;
+  return undefined;
+}
+
+function toSessionInfo(s: {
+  id: string;
+  title?: string;
+  time?: unknown;
+  timeUpdated?: unknown;
+  directory?: unknown;
+  agent?: unknown;
+  model?: unknown;
+}): SessionInfo {
+  return {
+    id: s.id,
+    title: s.title ?? "",
+    time: normalizeTime(s.time) || normalizeTime(s.timeUpdated),
+    timeUpdated: normalizeTime(s.timeUpdated) || normalizeTime(s.time),
+    directory: typeof s.directory === "string" ? s.directory : undefined,
+    agent: typeof s.agent === "string" ? s.agent : undefined,
+    model: formatModelRef(s.model),
+  };
+}
+
+export async function listMessages(
+  port: number,
+  sessionId: string,
+): Promise<SessionMessage[]> {
+  const url = `http://127.0.0.1:${port}/session/${sessionId}/message`;
+  let response: Response;
+  try {
+    response = await fetch(url, { headers: jsonHeaders() });
+  } catch {
+    return [];
+  }
+  if (!response.ok) {
+    assertNotAuthError(response.status, "Failed to list messages");
+    return [];
+  }
+  const data = await response.json();
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((m: { info?: { id?: string; role?: string }; parts?: Array<{ type?: string; text?: string }> }) => {
+      const text = (m.parts ?? [])
+        .filter((p) => p?.type === "text" && typeof p.text === "string")
+        .map((p) => p.text as string)
+        .join("\n");
+      return {
+        id: m.info?.id ?? "",
+        role: m.info?.role === "user" ? ("user" as const) : ("assistant" as const),
+        text,
+      };
+    })
+    .filter((m) => m.id);
 }
 
 export async function listSessions(port: number): Promise<SessionInfo[]> {
@@ -380,21 +454,11 @@ export async function listSessions(port: number): Promise<SessionInfo[]> {
 
   const data = await response.json();
   if (Array.isArray(data)) {
-    return data.map((s: { id: string; title?: string; time?: unknown; timeUpdated?: unknown }) => ({
-      id: s.id,
-      title: s.title ?? "",
-      time: normalizeTime(s.time) || normalizeTime(s.timeUpdated),
-      timeUpdated: normalizeTime(s.timeUpdated) || normalizeTime(s.time),
-    }));
+    return data.map(toSessionInfo);
   }
   const wrapped = (data as { data?: unknown })?.data;
   if (Array.isArray(wrapped)) {
-    return wrapped.map((s: { id: string; title?: string; time?: unknown; timeUpdated?: unknown }) => ({
-      id: s.id,
-      title: s.title ?? "",
-      time: normalizeTime(s.time) || normalizeTime(s.timeUpdated),
-      timeUpdated: normalizeTime(s.timeUpdated) || normalizeTime(s.time),
-    }));
+    return wrapped.map(toSessionInfo);
   }
   return [];
 }

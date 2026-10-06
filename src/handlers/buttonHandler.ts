@@ -18,6 +18,7 @@ import * as qaPrompts from '../services/qaPrompts.js';
 import * as pendingRequests from '../services/pendingRequests.js';
 import { computeDiff } from '../commands/diff.js';
 import { getCachedModels } from '../commands/model.js';
+import * as sessionSync from '../services/sessionSync.js';
 
 export async function handleButton(interaction: ButtonInteraction) {
   const customId = interaction.customId;
@@ -90,6 +91,9 @@ export async function handleButton(interaction: ButtonInteraction) {
       break;
     case 'modelbtn':
       await handleModelSelect(interaction, channelId);
+      break;
+    case 'sync':
+      await handleSync(interaction, channelId);
       break;
     case 'delete':
       await handleWorktreeDelete(interaction, channelId);
@@ -239,6 +243,33 @@ async function handleSessionsList(interaction: ButtonInteraction) {
     embeds: [embed],
     components: rows,
   });
+}
+
+async function handleSync(
+  interaction: ButtonInteraction,
+  channelId: string,
+) {
+  const channel = interaction.channel;
+  if (!channel?.isTextBased() || channel.isDMBased()) {
+    await interaction.reply({
+      content: '❌ Canal no soportado para sincronizar.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const result = await sessionSync.syncSessionToChannel(channel, channelId);
+    await interaction.editReply(
+      result.posted > 0
+        ? `🔄 Sincronizados ${result.posted} mensajes nuevos.`
+        : '🔄 Sin mensajes nuevos para sincronizar.',
+    );
+  } catch (error) {
+    console.error('[sync] failed:', error);
+    await interaction.editReply('❌ No se pudo sincronizar la sesión.');
+  }
 }
 
 async function handleModelSelect(

@@ -10,6 +10,7 @@ import {
 import * as dataStore from './dataStore.js';
 import * as serveManager from './serveManager.js';
 import * as sessionManager from './sessionManager.js';
+import * as sessionSync from './sessionSync.js';
 import type { AgentMode } from '../types/index.js';
 
 export const SESSION_PREFIX = '🤖';
@@ -78,11 +79,17 @@ export function sessionButtonRows(
     .setLabel('⚡ Init')
     .setStyle(ButtonStyle.Secondary);
 
+  const sync = new ButtonBuilder()
+    .setCustomId(`sync_${channelId}`)
+    .setLabel('🔄 Sincronizar')
+    .setStyle(ButtonStyle.Secondary);
+
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     undo,
     status,
     compact,
     init,
+    sync,
   );
 
   return [row1, row2];
@@ -200,6 +207,11 @@ export async function createChannelForSession(
   sessionManager.setSessionForThread(channel.id, sessionId, projectPath, port);
 
   await postSticky(channel, channel.id, agent);
+  try {
+    await sessionSync.syncSessionToChannel(channel, channel.id, { history: true });
+  } catch (error) {
+    console.error('[sessionFlow] Failed to backfill session history:', error);
+  }
   return channel;
 }
 

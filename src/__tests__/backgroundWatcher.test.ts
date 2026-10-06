@@ -38,11 +38,15 @@ vi.mock('../services/qaPrompts.js', () => ({
   postQuestion: vi.fn(async () => {}),
   postPermission: vi.fn(async () => {}),
 }));
+vi.mock('../services/sessionSync.js', () => ({
+  syncSessionToChannel: vi.fn(async () => ({ posted: 0, total: 0 })),
+}));
 vi.mock('../services/clientRef.js', () => ({ getClient: vi.fn(() => null) }));
 
 const { ensureWatcher, stopAllWatchers } = await import('../services/backgroundWatcher.js');
 const dataStore = await import('../services/dataStore.js');
 const qaPrompts = await import('../services/qaPrompts.js');
+const sessionSync = await import('../services/sessionSync.js');
 const clientRef = await import('../services/clientRef.js');
 const sessionManager = await import('../services/sessionManager.js');
 
@@ -107,34 +111,32 @@ describe('backgroundWatcher', () => {
     expect(qaPrompts.postQuestion).not.toHaveBeenCalled();
   });
 
-  it('should notify on background session idle when no active run', () => {
+  it('should sync on background session idle when no active run', () => {
     vi.mocked(dataStore.getAllThreadSessions).mockReturnValue([
       { threadId: 'chan_1', sessionId: 'ses_1', projectPath: '/p', port: 14097, createdAt: 0, lastUsedAt: 0 },
     ]);
     vi.mocked(sessionManager.getSseClient).mockReturnValue(undefined);
-    const send = vi.fn(async () => {});
-    const channel = mockChannel({ send });
+    const channel = mockChannel();
     vi.mocked(clientRef.getClient).mockReturnValue({ channels: { cache: { get: () => channel } } } as any);
 
     ensureWatcher(14097);
     h.callbacks.idle[0]('ses_1');
 
-    expect(send).toHaveBeenCalledWith(expect.stringContaining('Run terminado'));
+    expect(sessionSync.syncSessionToChannel).toHaveBeenCalledWith(channel, 'chan_1');
   });
 
-  it('should skip idle notification when a run is active in the channel', () => {
+  it('should skip idle sync when a run is active in the channel', () => {
     vi.mocked(dataStore.getAllThreadSessions).mockReturnValue([
       { threadId: 'chan_1', sessionId: 'ses_1', projectPath: '/p', port: 14097, createdAt: 0, lastUsedAt: 0 },
     ]);
     vi.mocked(sessionManager.getSseClient).mockReturnValue({ isConnected: () => true } as any);
-    const send = vi.fn(async () => {});
-    const channel = mockChannel({ send });
+    const channel = mockChannel();
     vi.mocked(clientRef.getClient).mockReturnValue({ channels: { cache: { get: () => channel } } } as any);
 
     ensureWatcher(14097);
     h.callbacks.idle[0]('ses_1');
 
-    expect(send).not.toHaveBeenCalled();
+    expect(sessionSync.syncSessionToChannel).not.toHaveBeenCalled();
   });
 
   it('should skip archived channels', () => {

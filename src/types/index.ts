@@ -49,6 +49,7 @@ export interface DataStore {
   hub?: HubConfig;
   archivedSessions?: ArchivedSession[];
   channelAgents?: ChannelAgent[];
+  syncCursors?: Record<string, string>;
 }
 
 export interface QueuedMessage {

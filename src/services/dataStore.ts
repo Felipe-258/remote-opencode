@@ -133,14 +133,46 @@ export function updateThreadSessionLastUsed(threadId: string): void {
 
 export function clearThreadSession(threadId: string): void {
   const data = loadData();
+  let changed = false;
   if (data.threadSessions) {
-    data.threadSessions = data.threadSessions.filter(s => s.threadId !== threadId);
+    const filtered = data.threadSessions.filter(s => s.threadId !== threadId);
+    if (filtered.length !== data.threadSessions.length) {
+      data.threadSessions = filtered;
+      changed = true;
+    }
+  }
+  if (data.syncCursors && data.syncCursors[threadId] !== undefined) {
+    delete data.syncCursors[threadId];
+    changed = true;
+  }
+  if (changed) {
     saveData(data);
   }
 }
 
 export function getAllThreadSessions(): ThreadSession[] {
   return loadData().threadSessions ?? [];
+}
+
+export function getSyncCursor(threadId: string): string | undefined {
+  return loadData().syncCursors?.[threadId];
+}
+
+export function setSyncCursor(threadId: string, messageId: string): void {
+  const data = loadData();
+  if (!data.syncCursors) {
+    data.syncCursors = {};
+  }
+  data.syncCursors[threadId] = messageId;
+  saveData(data);
+}
+
+export function clearSyncCursor(threadId: string): void {
+  const data = loadData();
+  if (data.syncCursors && data.syncCursors[threadId] !== undefined) {
+    delete data.syncCursors[threadId];
+    saveData(data);
+  }
 }
 
 export function setWorktreeMapping(mapping: WorktreeMapping): void {
