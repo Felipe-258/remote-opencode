@@ -15,6 +15,26 @@ import * as qaPrompts from './qaPrompts.js';
 import * as sessionSync from './sessionSync.js';
 import { formatOutput, formatOutputForMobile, buildContextHeader } from '../utils/messageFormatter.js';
 import { processNextInQueue } from './queueManager.js';
+import type { AgentMode } from '../types/index.js';
+
+function runControlRow(
+  threadId: string,
+  agent: AgentMode,
+  interruptDisabled = false,
+): ActionRowBuilder<ButtonBuilder> {
+  const mode = new ButtonBuilder()
+    .setCustomId(`mode_${threadId}`)
+    .setLabel(agent === 'plan' ? '🎯 Plan' : '🔨 Build')
+    .setStyle(agent === 'plan' ? ButtonStyle.Primary : ButtonStyle.Success);
+
+  const interrupt = new ButtonBuilder()
+    .setCustomId(`interrupt_${threadId}`)
+    .setLabel('⏸️ Interrupt')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(interruptDisabled);
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(mode, interrupt);
+}
 
 async function buildRunFooter(
   port: number,
@@ -131,13 +151,7 @@ export async function runPrompt(
   const branchName = worktreeMapping?.branchName ?? await worktreeManager.getCurrentBranch(effectivePath) ?? 'main';
   const contextHeader = buildContextHeader(branchName, modelDisplay);
   
-  const buttons = new ActionRowBuilder<ButtonBuilder>()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId(`interrupt_${threadId}`)
-        .setLabel('⏸️ Interrupt')
-        .setStyle(ButtonStyle.Secondary)
-    );
+  const buttons = runControlRow(threadId, agent);
   
   let streamMessage: Message;
   try {
@@ -250,14 +264,7 @@ export async function runPrompt(
             return;
           }
 
-          const disabledButtons = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-              new ButtonBuilder()
-                .setCustomId(`interrupt_${threadId}`)
-                .setLabel('⏸️ Interrupt')
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(true)
-            );
+          const disabledButtons = runControlRow(threadId, agent, true);
 
           if (!accumulatedText.trim()) {
             const edited = await updateStreamMessage(
@@ -313,14 +320,7 @@ export async function runPrompt(
       (async () => {
         try {
           const errorMsg = errorInfo.data?.message || errorInfo.name || 'Unknown error';
-          const disabledButtons = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-              new ButtonBuilder()
-                .setCustomId(`interrupt_${threadId}`)
-                .setLabel('⏸️ Interrupt')
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(true)
-            );
+          const disabledButtons = runControlRow(threadId, agent, true);
           
           const edited = await updateStreamMessage(
             `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n❌ **Error**: ${errorMsg}`,
